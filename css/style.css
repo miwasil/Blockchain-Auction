@@ -97,7 +97,6 @@ textarea{
     border-radius:5px;
 }
 
-/* FIX POLISH CHARACTERS */
 body, input, textarea, button {
     font-family: 'Roboto', Arial, sans-serif;
 }
