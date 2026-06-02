@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Nowa aukcja</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header>
+    <h2>Tworzenie aukcji</h2>
+</header>
+
+<div class="container">
+    <div class="card">
+        <form id="form">
+            <input id="title" placeholder="Tytuł" required>
+            <textarea id="desc" placeholder="Opis"></textarea>
+
+            <select id="type">
+                <option>English</option>
+                <option>Dutch</option>
+            </select>
+
+            <input id="price" type="number" placeholder="Cena">
+
+            <select id="currency">
+                <option>EUR</option>
+                <option>USD</option>
+            </select>
+
+            <select id="payment">
+                <option>100%</option>
+                <option>50/50</option>
+            </select>
+
+            <input type="file" id="image" accept="image/*">
+
+            <button class="btn">Utwórz</button>
+        </form>
+    </div>
+</div>
+
+<script src="js/mockData.js"></script>
+<script src="js/createAuction.js"></script>
+</body>
+</html>
