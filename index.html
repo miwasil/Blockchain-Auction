@@ -11,8 +11,9 @@
 <header>
     <h2>Aukcje Blockchain</h2>
     <nav>
-        <a href="index.html">Home</a>
-        <a href="create-auction.html">Nowa</a>
+        <a href="index.html">Ekran Główny</a>
+        <a href="create-auction.html">Utwórz aukcję</a>
+        <button id="connectWalletBtn" class="btn" style="background-color: #f6851b; margin-left: 20px;">Połącz MetaMask</button>
     </nav>
 </header>
 
@@ -20,7 +21,8 @@
     <div id="list" class="grid"></div>
 </div>
 
-<script src="js/mockData.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script src="js/blockchain.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

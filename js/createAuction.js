@@ -1,50 +1,46 @@
-document.getElementById("form").addEventListener("submit", e=>{
-  e.preventDefault();
+document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const file = document.getElementById("image").files[0];
+    if (!auctionContract) {
+        alert("Zaloguj się przez MetaMask, aby wystawić przedmiot na blockchainie!");
+        return;
+    }
 
-  const title = document.getElementById("title").value;
-  const desc = document.getElementById("desc").value;
-  const type = document.getElementById("type").value;
-  const currency = document.getElementById("currency").value;
-  const payment = document.getElementById("payment").value;
-  const price = Number(document.getElementById("price").value);
+    const title = document.getElementById("title").value;
+    const priceEth = document.getElementById("price").value;
 
-  if(price <= 0){
-    alert("Cena musi być większa od 0");
-    return;
-  }
+    if (priceEth <= 0) {
+        alert("Cena musi być większa od 0");
+        return;
+    }
 
-  function createAuction(imageBase64){
+    try {
+        // ETH -> Wei (18 zer) dla kontraktu
+        const startingPriceWei = ethers.utils.parseEther(priceEth.toString());
+        
+        // Parametry: 
+        // Cena minimalna = połowa startowej
+        // Czas trwania = 1 dzień (86400 sekund)
+        const reservePriceWei = startingPriceWei.div(2); 
+        const durationSeconds = 86400;
 
-    const auction = {
-      id: Date.now(),
-      title,
-      description: desc,
-      type,
-      price,
-      currency,
-      payment,
-      image: imageBase64 || "",
-      owner: "local-user",
-      bids: []
-    };
+        alert("Potwierdź transakcję utworzenia aukcji w MetaMask...");
+        
+        const tx = await auctionContract.createAuction(
+            title, 
+            startingPriceWei, 
+            reservePriceWei, 
+            durationSeconds
+        );
 
-    auctions.push(auction);
-    save();
+        console.log("Transakcja wysłana, czekamy na blok...");
+        await tx.wait(); // sleep aż zapisze dane
 
-    window.location = "index.html";
-  }
+        alert("Sukces! Aukcja została na stałe zapisana na blockchainie.");
+        window.location = "index.html"; // Powrót
 
-  if(file){
-    const reader = new FileReader();
-
-    reader.onload = function(){
-      createAuction(reader.result);
-    };
-
-    reader.readAsDataURL(file);
-  } else {
-    createAuction(null);
-  }
+    } catch (error) {
+        console.error("Błąd tworzenia aukcji:", error);
+        alert("Odrzucono transakcję w portfelu lub wystąpił błąd.");
+    }
 });

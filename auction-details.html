@@ -15,16 +15,32 @@
         <h2 id="title"></h2>
         <p id="desc"></p>
         <p id="price"></p>
+        
+        <hr style="margin: 20px 0;">
+        
+        <div id="dutch-ui" style="display: none;">
+            <h3>Kup (Aukcja Holenderska)</h3>
+            <p id="bc-price">Ładowanie ceny na żywo z kontraktu...</p>
+            <button class="btn" id="bcBuyBtn" style="background-color: #28a745;">Kup Teraz (100%)</button>
+            <button class="btn" id="bcBuy50Btn" style="background-color: #17a2b8;">Kup na raty (50% teraz i 50% do 7 dni)</button>
+        </div>
 
-        <input id="bid" type="number" placeholder="Oferta">
-        <button class="btn" id="bidBtn">Licytuj</button>
+        <div id="english-ui" style="display: none;">
+            <h3>Licytacja (Aukcja Klasyczna)</h3>
+            <p id="highest-bid-info">Najwyższa oferta: Brak</p>
+            <input id="bidAmount" type="number" step="0.01" placeholder="Twoja oferta (w ETH)">
+            <button class="btn" id="bidBtn" style="background-color: #007bff;">Przebij ofertę</button>
+            <button class="btn" id="endAuctionBtn" style="background-color: #dc3545; display: none;">Zakończ Aukcję</button>
+        </div>
 
-        <h3>Oferty</h3>
+    </div>
+</div>
         <div id="bids"></div>
     </div>
 </div>
 
-<script src="js/mockData.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script src="js/blockchain.js"></script>
 <script src="js/auctionDetails.js"></script>
 </body>
 </html>
