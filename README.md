@@ -121,7 +121,7 @@ Jeśli korzystasz z **Visual Studio Code**, użyj rozszerzenia **Live Server**.
 Otwórz przeglądarkę i przejdź pod adres:
 
 ```text
-http://localhost:8000
+http://localhost:5500
 ```
 
 Aplikacja jest gotowa do działania.
