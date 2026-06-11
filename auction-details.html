@@ -1,13 +1,20 @@
-
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Szczegóły</title>
+    <title>Szczegóły aukcji</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
 </head>
 <body>
+
+<header>
+    <h2>Szczegóły aukcji</h2>
+    <nav>
+        <a href="index.html">Ekran Główny</a>
+        <button id="connectWalletBtn" class="btn" style="background-color: #f6851b; margin-left: 20px;">Połącz MetaMask</button>
+    </nav>
+</header>
 
 <div class="container">
     <div class="card">
@@ -15,27 +22,39 @@
         <h2 id="title"></h2>
         <p id="desc"></p>
         <p id="price"></p>
-        
+
         <hr style="margin: 20px 0;">
-        
+
+        <!-- AUKCJA HOLENDERSKA -->
         <div id="dutch-ui" style="display: none;">
             <h3>Kup (Aukcja Holenderska)</h3>
             <p id="bc-price">Ładowanie ceny na żywo z kontraktu...</p>
-            <button class="btn" id="bcBuyBtn" style="background-color: #28a745;">Kup Teraz (100%)</button>
-            <button class="btn" id="bcBuy50Btn" style="background-color: #17a2b8;">Kup na raty (50% teraz i 50% do 7 dni)</button>
+            <button class="btn" id="bcBuyBtn" style="background-color: #28a745; display:none;">
+                Kup Teraz (100%)
+            </button>
+            <button class="btn" id="bcBuy50Btn" style="background-color: #17a2b8; display:none;">
+                Kup na raty (50% teraz, 50% do 7 dni)
+            </button>
         </div>
 
+        <!-- AUKCJA ANGIELSKA -->
         <div id="english-ui" style="display: none;">
             <h3>Licytacja (Aukcja Klasyczna)</h3>
-            <p id="highest-bid-info">Najwyższa oferta: Brak</p>
-            <input id="bidAmount" type="number" step="0.01" placeholder="Twoja oferta (w ETH)">
-            <button class="btn" id="bidBtn" style="background-color: #007bff;">Przebij ofertę</button>
-            <button class="btn" id="endAuctionBtn" style="background-color: #dc3545; display: none;">Zakończ Aukcję</button>
+            <p id="highest-bid-info">Ładowanie danych...</p>
+            <input id="bidAmount" type="number" step="0.001" min="0"
+                   placeholder="Twoja oferta (ETH)" style="display:none;">
+            <br>
+            <button class="btn" id="bidBtn" style="background-color: #007bff; display:none;">
+                Złóż ofertę
+            </button>
+            <button class="btn" id="endAuctionBtn" style="background-color: #dc3545; display:none;">
+                Zakończ aukcję
+            </button>
+            <button class="btn" id="withdrawBtn" style="background-color: #6c757d; display:none;">
+                Odbierz zwrot ETH
+            </button>
         </div>
 
-    </div>
-</div>
-        <div id="bids"></div>
     </div>
 </div>
 

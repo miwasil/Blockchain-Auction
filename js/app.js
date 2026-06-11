@@ -1,14 +1,12 @@
 const list = document.getElementById("list");
 
 async function renderAuctions() {
-    // Sprawdzamy, czy użytkownik jest połączony
     if (!auctionContract) {
         list.innerHTML = "<p>Pobieranie danych z blockchaina... (Jeśli trwa to długo, kliknij 'Połącz MetaMask')</p>";
         return;
     }
 
     try {
-        // Pytamy blockchain, ile łącznie wygenerowano aukcji
         const totalCounter = await auctionContract.auctionCounter();
         const total = totalCounter.toNumber();
 
@@ -17,41 +15,56 @@ async function renderAuctions() {
             return;
         }
 
-        list.innerHTML = ""; // Czyścimy listę "Pobieranie..."
+        list.innerHTML = "";
 
-        // Pętla pobierająca każdą aukcję po kolei
         for (let i = 1; i <= total; i++) {
             const auc = await auctionContract.auctions(i);
-            
+
             const id = auc.id.toNumber();
             const title = auc.title;
-            const startingPriceEth = ethers.utils.formatEther(auc.startingPrice);
             const isClosed = auc.isClosed;
+            // auctionType: 0 = Dutch, 1 = English
+            const isEnglish = auc.auctionType === 1;
 
-            const statusHTML = isClosed 
-                ? "<b style='color:red'>Zakończona / Sprzedane</b>" 
-                : "<b style='color:green'>Aktywna (Cena spada)</b>";
+            const statusHTML = isClosed
+                ? "<b style='color:red'>Zakończona</b>"
+                : "<b style='color:green'>Aktywna</b>";
+
+            let priceHTML = "";
+            let typeLabel = "";
+
+            if (isEnglish) {
+                typeLabel = "Aukcja Klasyczna (English)";
+                const highestBid = auc.highestBid;
+                if (highestBid.gt(0)) {
+                    priceHTML = `Najwyższa oferta: ${ethers.utils.formatEther(highestBid)} ETH`;
+                } else {
+                    priceHTML = `Min. oferta: ${ethers.utils.formatEther(auc.minBid)} ETH`;
+                }
+            } else {
+                typeLabel = "Aukcja Holenderska (Dutch)";
+                const startingPriceEth = ethers.utils.formatEther(auc.startingPrice);
+                priceHTML = `Cena startowa: ${startingPriceEth} ETH`;
+            }
 
             list.innerHTML += `
             <div class="card">
               <div class="no-image">Brak obrazu</div>
               <h3>${title} (ID: ${id})</h3>
-              <p>Typ: Aukcja Holenderska</p>
-              <p>Cena startowa: ${startingPriceEth} ETH</p>
+              <p>Typ: ${typeLabel}</p>
+              <p>${priceHTML}</p>
               <p>Status: ${statusHTML}</p>
-              
               <a href="auction-details.html?id=${id}">
-                <button class="btn">Szczegóły / Kup</button>
+                <button class="btn">Szczegóły / ${isEnglish ? 'Licytuj' : 'Kup'}</button>
               </a>
             </div>`;
         }
     } catch (err) {
-        console.error("Błąd podczas pobierania list aukcji:", err);
+        console.error("Błąd podczas pobierania listy aukcji:", err);
         list.innerHTML = "<p>Wystąpił błąd podczas łączenia z siecią. Sprawdź konsolę (F12).</p>";
     }
 }
 
-// Czekamy chwilę, aż plik blockchain.js połączy się z MetaMaskiem, po czym ładujemy listę
 const interval = setInterval(() => {
     if (auctionContract) {
         clearInterval(interval);
