@@ -21,7 +21,7 @@ Przed uruchomieniem projektu lokalnie upewnij się, że masz zainstalowane:
 Otwórz terminal w głównym folderze projektu i uruchom:
 
 ```bash
-anvil
+anvil --block-time 1
 ```
 
 Nie zamykaj tego terminala — działa on jako lokalny serwer blockchain.
