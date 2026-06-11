@@ -1,3 +1,8 @@
+// Konfiguracja do odczytu prawdziwej ceny z Mainnetu (Chainlink ETH/USD)
+const ALCHEMY_URL = "https://eth-mainnet.g.alchemy.com/v2/wtJBAQ8bkOmO5s8EDWdvH";
+const CHAINLINK_ETH_USD_ADDRESS = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+const CHAINLINK_ABI = ["function latestRoundData() view returns (uint80, int256 answer, uint256, uint256, uint80)"];
+
 // Pobieramy ID aukcji z paska adresu przeglądarki (np. ?id=1)
 const urlParams = new URLSearchParams(window.location.search);
 const auctionId = urlParams.get("id");
@@ -15,6 +20,7 @@ async function fetchBlockchainState() {
         // 1. Pobieramy twarde dane o tej konkretnej aukcji z bazy Managera
         const auc = await auctionContract.auctions(auctionId);
         const title = auc.title;
+        const description = auc.description; // Pobieramy opis
         const isClosed = auc.isClosed;
         const sellerAddress = auc.seller;
         const buyerAddress = auc.buyer;
@@ -22,16 +28,37 @@ async function fetchBlockchainState() {
         
         const userAddress = await signer.getAddress();
 
-        // 2. Wypełniamy nagłówki na stronie
+        // Wypełniamy nagłówki na stronie
         document.getElementById("img").style.display = "none"; // Chowamy img z mocka
         document.getElementById("title").innerText = `${title} (Aukcja #${auctionId})`;
-        document.getElementById("desc").innerText = `Sprzedawca: ${sellerAddress.substring(0,6)}...`;
+        document.getElementById("desc").innerText = `Opis: ${description ? description : "Brak opisu"}\nSprzedawca: ${sellerAddress.substring(0,6)}...`;
+
+        // 2. Pobieramy kurs USD z prawdziwego Ethereum (Alchemy / Chainlink)
+        let ethUsdPrice = 0;
+        try {
+            const mainnetProvider = new ethers.providers.JsonRpcProvider(ALCHEMY_URL);
+            const priceFeed = new ethers.Contract(CHAINLINK_ETH_USD_ADDRESS, CHAINLINK_ABI, mainnetProvider);
+            const roundData = await priceFeed.latestRoundData();
+            ethUsdPrice = roundData.answer.toNumber() / 1e8; 
+        } catch (chainlinkErr) {
+            console.error("Nie udało się pobrać kursu z Alchemy:", chainlinkErr);
+        }
+
+        // 3. Wyliczamy obecną cenę ETH i formatujemy tekst z ceną w USD
+        const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
+        const ethValue = ethers.utils.formatEther(currentPriceWei);
+        
+        let priceText = `Obecna cena: ${ethValue} ETH`;
+        if (ethUsdPrice > 0) {
+            const usdValue = (parseFloat(ethValue) * ethUsdPrice).toFixed(2);
+            priceText += ` (~ ${usdValue} USD)`;
+        }
 
         // Pobieramy przyciski zakupu
         const btn100 = document.getElementById("bcBuyBtn");
         const btn50 = document.getElementById("bcBuy50Btn");
 
-        // 3. LOGIKA RENDEROWANIA (Kim jesteś i jaki jest stan)
+        // 4. LOGIKA RENDEROWANIA (Kim jesteś i jaki jest stan)
         if (isClosed) {
             document.getElementById("bc-price").innerText = "AUKCJA ZAKOŃCZONA (Przedmiot sprzedany)";
             btn100.style.display = "none";
@@ -48,14 +75,12 @@ async function fetchBlockchainState() {
             }
         } else if (userAddress === sellerAddress) {
             // Jeśli jesteś sprzedawcą - blokujemy przyciski
-            const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
-            document.getElementById("bc-price").innerText = `Obecna cena: ${ethers.utils.formatEther(currentPriceWei)} ETH\n(To jest Twoja aukcja)`;
+            document.getElementById("bc-price").innerText = `${priceText}\n(To jest Twoja aukcja)`;
             btn100.style.display = "none";
             btn50.style.display = "none";
         } else {
-            // Jesteś kupującym - wyświetlamy spadającą cenę
-            const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
-            document.getElementById("bc-price").innerText = `Obecna cena: ${ethers.utils.formatEther(currentPriceWei)} ETH`;
+            // Jesteś kupującym - wyświetlamy spadającą cenę wraz z USD
+            document.getElementById("bc-price").innerText = priceText;
             
             btn100.style.display = "inline-block";
             btn50.style.display = "inline-block";
