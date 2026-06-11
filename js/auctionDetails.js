@@ -1,3 +1,10 @@
+// ============================================================
+//  KONFIGURACJA ZEWNĘTRZNA (ALCHEMY & CHAINLINK)
+// ============================================================
+const ALCHEMY_URL = "https://eth-mainnet.g.alchemy.com/v2/wtJBAQ8bkOmO5s8EDWdvH";
+const CHAINLINK_ETH_USD_ADDRESS = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+const CHAINLINK_ABI = ["function latestRoundData() view returns (uint80, int256 answer, uint256, uint256, uint80)"];
+
 const urlParams = new URLSearchParams(window.location.search);
 const auctionId = urlParams.get("id");
 
@@ -20,14 +27,26 @@ async function fetchBlockchainState() {
         document.getElementById("title").innerText = `${auc.title} (Aukcja #${auctionId})`;
         document.getElementById("desc").innerText = `Sprzedawca: ${auc.seller.substring(0, 6)}...`;
 
+        // Pobieramy kurs USD z prawdziwego Ethereum (Alchemy / Chainlink)
+        let ethUsdPrice = 0;
+        try {
+            const mainnetProvider = new ethers.providers.JsonRpcProvider(ALCHEMY_URL);
+            const priceFeed = new ethers.Contract(CHAINLINK_ETH_USD_ADDRESS, CHAINLINK_ABI, mainnetProvider);
+            const roundData = await priceFeed.latestRoundData();
+            ethUsdPrice = roundData.answer.toNumber() / 1e8; 
+        } catch (chainlinkErr) {
+            console.error("Nie udało się pobrać kursu z Alchemy:", chainlinkErr);
+        }
+
+        // Renderujemy odpowiednie UI i przekazujemy kurs USD
         if (isEnglish) {
             document.getElementById("dutch-ui").style.display = "none";
             document.getElementById("english-ui").style.display = "block";
-            await renderEnglishUI(auc);
+            await renderEnglishUI(auc, ethUsdPrice);
         } else {
             document.getElementById("dutch-ui").style.display = "block";
             document.getElementById("english-ui").style.display = "none";
-            await renderDutchUI(auc);
+            await renderDutchUI(auc, ethUsdPrice);
         }
     } catch (error) {
         console.error("Błąd pobierania stanu z blockchaina:", error);
@@ -38,7 +57,7 @@ async function fetchBlockchainState() {
 //  AUKCJA HOLENDERSKA
 // ============================================================
 
-async function renderDutchUI(auc) {
+async function renderDutchUI(auc, ethUsdPrice) {
     const userAddress = await signer.getAddress();
     const isClosed = auc.isClosed;
     const sellerAddress = auc.seller;
@@ -47,6 +66,17 @@ async function renderDutchUI(auc) {
 
     const btn100 = document.getElementById("bcBuyBtn");
     const btn50 = document.getElementById("bcBuy50Btn");
+
+    // Wyliczamy obecną cenę ETH i formatujemy tekst w USD
+    const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
+    const ethValue = ethers.utils.formatEther(currentPriceWei);
+    const ethValueDisplay = parseFloat(ethValue).toFixed(4); // Ograniczamy do 4 miejsc
+    
+    let priceText = `Obecna cena: ${ethValueDisplay} ETH`;
+    if (ethUsdPrice > 0) {
+        const usdValue = (parseFloat(ethValue) * ethUsdPrice).toFixed(2);
+        priceText += ` (~ ${usdValue} USD)`;
+    }
 
     if (isClosed) {
         document.getElementById("bc-price").innerText = "AUKCJA ZAKOŃCZONA (Przedmiot sprzedany)";
@@ -62,15 +92,11 @@ async function renderDutchUI(auc) {
             btn50.onclick = payDebt;
         }
     } else if (userAddress.toLowerCase() === sellerAddress.toLowerCase()) {
-        const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
-        document.getElementById("bc-price").innerText =
-            `Obecna cena: ${ethers.utils.formatEther(currentPriceWei)} ETH\n(To jest Twoja aukcja)`;
+        document.getElementById("bc-price").innerText = `${priceText}\n(To jest Twoja aukcja)`;
         btn100.style.display = "none";
         btn50.style.display = "none";
     } else {
-        const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
-        document.getElementById("bc-price").innerText =
-            `Obecna cena: ${ethers.utils.formatEther(currentPriceWei)} ETH`;
+        document.getElementById("bc-price").innerText = priceText;
         btn100.style.display = "inline-block";
         btn50.style.display = "inline-block";
         btn100.onclick = () => executePurchase(false);
@@ -116,7 +142,7 @@ async function payDebt() {
 //  AUKCJA ANGIELSKA
 // ============================================================
 
-async function renderEnglishUI(auc) {
+async function renderEnglishUI(auc, ethUsdPrice) {
     const userAddress = (await signer.getAddress()).toLowerCase();
     const sellerAddress = auc.seller.toLowerCase();
     const isClosed = auc.isClosed;
@@ -139,14 +165,28 @@ async function renderEnglishUI(auc) {
         ? `Czas do końca: ${minutes}m ${seconds}s`
         : "Czas upłynął";
 
+    // Formatowanie najwyższej oferty z USD
+    const highestBidEth = ethers.utils.formatEther(highestBid);
+    let highestBidText = `${highestBidEth} ETH`;
+    if (ethUsdPrice > 0 && highestBid.gt(0)) {
+        highestBidText += ` (~ ${(parseFloat(highestBidEth) * ethUsdPrice).toFixed(2)} USD)`;
+    }
+
+    // Formatowanie minimalnej oferty z USD
+    const minBidEth = ethers.utils.formatEther(minBid);
+    let minBidText = `${minBidEth} ETH`;
+    if (ethUsdPrice > 0 && highestBid.isZero()) {
+        minBidText += ` (~ ${(parseFloat(minBidEth) * ethUsdPrice).toFixed(2)} USD)`;
+    }
+
     if (highestBid.gt(0)) {
         bidInfo.innerText =
-            `Najwyższa oferta: ${ethers.utils.formatEther(highestBid)} ETH` +
+            `Najwyższa oferta: ${highestBidText}` +
             ` | Lider: ${auc.highestBidder.substring(0, 6)}...` +
             `\n${timeStr}`;
     } else {
         bidInfo.innerText =
-            `Brak ofert. Minimalna oferta: ${ethers.utils.formatEther(minBid)} ETH` +
+            `Brak ofert. Minimalna oferta: ${minBidText}` +
             `\n${timeStr}`;
     }
 
@@ -158,7 +198,7 @@ async function renderEnglishUI(auc) {
 
     if (isClosed) {
         const winnerText = auc.buyer !== ethers.constants.AddressZero
-            ? `Wygrał: ${auc.buyer.substring(0, 6)}... za ${ethers.utils.formatEther(highestBid)} ETH`
+            ? `Wygrał: ${auc.buyer.substring(0, 6)}... za ${highestBidText}`
             : "Nikt nie licytował — aukcja zakończona bez sprzedaży.";
         bidInfo.innerText = `AUKCJA ZAKOŃCZONA\n${winnerText}`;
 
