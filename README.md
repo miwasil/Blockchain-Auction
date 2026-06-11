@@ -8,7 +8,7 @@ Platforma Web3 umożliwiająca tworzenie i licytowanie przedmiotów w modelach *
 
 Przed uruchomieniem projektu lokalnie upewnij się, że masz zainstalowane:
 
-* **Foundry** (w tym narzędzia `forge` oraz `anvil`)
+* **Foundry** (w tym narzędzia `forge` oraz `anvil` oraz biblioteki `forge-std` i `OpenZeppelin Contracts`)
 * **MetaMask** (rozszerzenie do przeglądarki internetowej)
 * **Live Server** dla Visual Studio Code
 
