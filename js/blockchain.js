@@ -1,17 +1,21 @@
 // ZMIENIĆ PO KAŻDYM RESTARCIE BLOCKCHAINA
-const AUCTION_CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const AUCTION_CONTRACT_ADDRESS = "0x4B06A8b80b64E0B54B3B6dafEDC23C595b7a71E1";
 
 const AUCTION_ABI = [
     // Tworzenie
-    "function createDutchAuction(string _title, uint256 _startingPrice, uint256 _reservePrice, uint256 _duration) external",
-    "function createEnglishAuction(string _title, uint256 _minBid, uint256 _duration) external",
+    "function createDutchAuction(string _title, uint256 _startingPriceUsd, uint256 _reservePriceUsd, uint256 _duration) external",
+    "function createEnglishAuction(string _title, uint256 _minBidUsd, uint256 _duration) external",
 
     // Odczyt
     "function auctionCounter() public view returns (uint256)",
-    "function auctions(uint256) public view returns (uint256 id, uint8 auctionType, address seller, string title, uint256 startingPrice, uint256 reservePrice, uint256 discountRate, uint256 minBid, uint256 highestBid, address highestBidder, uint256 startAt, uint256 expiresAt, bool isClosed, address buyer, uint256 debt, uint256 deadline5050)",
-    "function getCurrentPrice(uint256 _id) public view returns (uint256)",
+    "function auctions(uint256) public view returns (uint256 id, uint8 auctionType, address seller, string title, uint256 startingPrice, uint256 reservePrice, uint256 discountRate, uint256 minBid, uint256 highestBid, uint256 highestBidEth, address highestBidder, uint256 startAt, uint256 expiresAt, bool isClosed, address buyer, uint256 debtUsd, uint256 deadline5050)",
+    "function getCurrentPriceUsd(uint256 _id) public view returns (uint256)",
     "function getTimeLeft(uint256 _id) external view returns (uint256)",
     "function pendingReturns(uint256, address) public view returns (uint256)",
+
+    // Przeliczniki walut
+    "function getEthAmountForUsd(uint256 usdAmountWei) public view returns (uint256)",
+    "function getUsdValue(uint256 ethAmountWei) public view returns (uint256)",
 
     // Aukcja holenderska
     "function buy(uint256 _id, bool is5050) external payable",
@@ -24,8 +28,8 @@ const AUCTION_ABI = [
     "function finalizeEnglishAuction(uint256 _id) external",
 
     // Eventy
-    "event BidPlaced(uint256 indexed id, address bidder, uint256 amount)",
-    "event AuctionFinalized(uint256 indexed id, address winner, uint256 amount)"
+    "event BidPlaced(uint256 indexed id, address bidder, uint256 usdAmount, uint256 ethAmount)",
+    "event AuctionFinalized(uint256 indexed id, address winner, uint256 ethAmountPaid)"
 ];
 
 let provider;

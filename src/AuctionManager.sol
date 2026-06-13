@@ -3,9 +3,24 @@ pragma solidity ^0.8.20;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+// =========================================================
+//  INTERFEJS CHAINLINK
+// =========================================================
+interface AggregatorV3Interface {
+    function latestRoundData() external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+}
+
 contract AuctionManager is ReentrancyGuard {
 
-    // Typ aukcji
+    // Adres wyroczni cenowej Chainlink ETH/USD na Ethereum Mainnet
+    AggregatorV3Interface internal priceFeed = AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
+
     enum AuctionType { Dutch, English }
 
     struct Auction {
@@ -14,35 +29,33 @@ contract AuctionManager is ReentrancyGuard {
         address payable seller;
         string title;
 
-        // --- Pola Holenderskiej ---
-        uint256 startingPrice;
-        uint256 reservePrice;
-        uint256 discountRate;
+        // --- Pola Holenderskiej (CENY W USD WEI) ---
+        uint256 startingPrice; 
+        uint256 reservePrice;  
+        uint256 discountRate;  
 
-        // --- Pola Angielskiej ---
-        uint256 minBid;         // Minimalna kwota pierwszej oferty
-        uint256 highestBid;     // Aktualna najwyższa oferta
-        address payable highestBidder; // Adres lidera
+        // --- Pola Angielskiej (CENY W USD WEI) ---
+        uint256 minBid;         
+        uint256 highestBid;     // najwyzsza
+        uint256 highestBidEth;  // ile ETH wplacil lider
+        address payable highestBidder; 
 
-        // --- Wspólne ---
         uint256 startAt;
         uint256 expiresAt;
         bool isClosed;
-        address buyer;      // Finalny kupujący (Dutch 50/50 lub English po zakończeniu)
-        uint256 debt;       // Dług w trybie 50/50 (tylko Dutch)
+        address buyer;      
+        uint256 debtUsd;  
         uint256 deadline5050;
     }
 
     mapping(uint256 => Auction) public auctions;
-    // Mapa: auctionId => bidder => kwota zablokowana (English)
-    mapping(uint256 => mapping(address => uint256)) public pendingReturns;
+    mapping(uint256 => mapping(address => uint256)) public pendingReturns; // Zawsze w ETH
 
     uint256 public auctionCounter;
 
-    // Eventy do nasłuchiwania po stronie frontendu
     event AuctionCreated(uint256 indexed id, AuctionType auctionType, address seller);
-    event BidPlaced(uint256 indexed id, address bidder, uint256 amount);
-    event AuctionFinalized(uint256 indexed id, address winner, uint256 amount);
+    event BidPlaced(uint256 indexed id, address bidder, uint256 usdAmount, uint256 ethAmount);
+    event AuctionFinalized(uint256 indexed id, address winner, uint256 ethAmountPaid);
 
     error AuctionNotFound();
     error AuctionClosed();
@@ -53,18 +66,39 @@ contract AuctionManager is ReentrancyGuard {
     error WrongAuctionType();
 
     // =========================================================
+    //  POMOCNICZE: PRZELICZANIE WALUT (CHAINLINK)
+    // =========================================================
+
+    /// @notice Pobiera obecną cenę 1 ETH w USD (z 8 miejscami po przecinku)
+    function getLatestEthPrice() public view returns (uint256) {
+        (, int256 price, , , ) = priceFeed.latestRoundData();
+        return uint256(price);
+    }
+
+    /// @notice Zmienia podaną kwotę ETH (Wei) na jej równowartość w USD (Wei, 18 miejsc)
+    function getUsdValue(uint256 ethAmountWei) public view returns (uint256) {
+        uint256 ethPrice = getLatestEthPrice();
+        return (ethAmountWei * ethPrice) / 1e8;
+    }
+
+    /// @notice Zmienia wymaganą kwotę USD (Wei, 18 miejsc) na potrzebną ilość ETH (Wei)
+    function getEthAmountForUsd(uint256 usdAmountWei) public view returns (uint256) {
+        uint256 ethPrice = getLatestEthPrice();
+        return (usdAmountWei * 1e8) / ethPrice;
+    }
+
+    // =========================================================
     //  TWORZENIE AUKCJI
     // =========================================================
 
-    /// @notice Tworzy aukcję holenderską (cena spada w czasie)
     function createDutchAuction(
         string memory _title,
-        uint256 _startingPrice,
-        uint256 _reservePrice,
+        uint256 _startingPriceUsd,
+        uint256 _reservePriceUsd,
         uint256 _duration
     ) external {
-        require(_startingPrice > _reservePrice, "Cena poczatkowa musi byc wieksza od minimalnej");
-        require(_duration > 0, "Czas trwania musi byc wiekszy od 0");
+        require(_startingPriceUsd > _reservePriceUsd, "Cena poczatkowa musi byc wieksza");
+        require(_duration > 0, "Czas musi byc wiekszy od 0");
 
         auctionCounter++;
         uint256 newId = auctionCounter;
@@ -74,31 +108,31 @@ contract AuctionManager is ReentrancyGuard {
             auctionType: AuctionType.Dutch,
             seller: payable(msg.sender),
             title: _title,
-            startingPrice: _startingPrice,
-            reservePrice: _reservePrice,
-            discountRate: (_startingPrice - _reservePrice) / _duration,
+            startingPrice: _startingPriceUsd,
+            reservePrice: _reservePriceUsd,
+            discountRate: (_startingPriceUsd - _reservePriceUsd) / _duration,
             minBid: 0,
             highestBid: 0,
+            highestBidEth: 0,
             highestBidder: payable(address(0)),
             startAt: block.timestamp,
             expiresAt: block.timestamp + _duration,
             isClosed: false,
             buyer: address(0),
-            debt: 0,
+            debtUsd: 0,
             deadline5050: 0
         });
 
         emit AuctionCreated(newId, AuctionType.Dutch, msg.sender);
     }
 
-    /// @notice Tworzy aukcję angielską (cena rośnie, wygrywa najwyższa oferta)
     function createEnglishAuction(
         string memory _title,
-        uint256 _minBid,
+        uint256 _minBidUsd,
         uint256 _duration
     ) external {
-        require(_minBid > 0, "Minimalna oferta musi byc wieksza od 0");
-        require(_duration > 0, "Czas trwania musi byc wiekszy od 0");
+        require(_minBidUsd > 0, "Min oferta musi byc > 0");
+        require(_duration > 0, "Czas musi byc > 0");
 
         auctionCounter++;
         uint256 newId = auctionCounter;
@@ -111,14 +145,15 @@ contract AuctionManager is ReentrancyGuard {
             startingPrice: 0,
             reservePrice: 0,
             discountRate: 0,
-            minBid: _minBid,
+            minBid: _minBidUsd,
             highestBid: 0,
+            highestBidEth: 0,
             highestBidder: payable(address(0)),
             startAt: block.timestamp,
             expiresAt: block.timestamp + _duration,
             isClosed: false,
             buyer: address(0),
-            debt: 0,
+            debtUsd: 0,
             deadline5050: 0
         });
 
@@ -129,8 +164,8 @@ contract AuctionManager is ReentrancyGuard {
     //  AUKCJA HOLENDERSKA
     // =========================================================
 
-    /// @notice Zwraca obecną (spadającą) cenę aukcji holenderskiej
-    function getCurrentPrice(uint256 _id) public view returns (uint256) {
+    /// @notice Zwraca obecną (spadającą) cenę aukcji holenderskiej W DOLARACH (USD Wei)
+    function getCurrentPriceUsd(uint256 _id) public view returns (uint256) {
         if (_id == 0 || _id > auctionCounter) revert AuctionNotFound();
 
         Auction storage auc = auctions[_id];
@@ -142,60 +177,63 @@ contract AuctionManager is ReentrancyGuard {
         return auc.startingPrice - discount;
     }
 
-    /// @notice Kupno w aukcji holenderskiej (100% lub 50/50)
     function buy(uint256 _id, bool is5050) external payable nonReentrant {
         Auction storage auc = auctions[_id];
         if (auc.auctionType != AuctionType.Dutch) revert WrongAuctionType();
         if (auc.isClosed) revert AuctionClosed();
         if (block.timestamp > auc.expiresAt) revert TimeExpired();
 
-        uint256 currentPrice = getCurrentPrice(_id);
+        // Pobieramy cenę w USD i sprawdzamy, ile ETH musi wysłać użytkownik
+        uint256 currentPriceUsd = getCurrentPriceUsd(_id);
+        uint256 requiredEth = getEthAmountForUsd(currentPriceUsd);
 
         if (!is5050) {
-            require(msg.value >= currentPrice, "Za malo ETH");
+            require(msg.value >= requiredEth, "Zbyt malo ETH wzgledem kursu USD");
             auc.isClosed = true;
             auc.buyer = msg.sender;
 
             (bool success, ) = auc.seller.call{value: msg.value}("");
-            require(success, "Transfer nie powiodl sie");
+            require(success, "Transfer ETH fail");
         } else {
-            uint256 requiredDownPayment = currentPrice / 2;
-            require(msg.value >= requiredDownPayment, "Za malo ETH na zaliczke");
+            uint256 requiredDownPaymentEth = requiredEth / 2;
+            require(msg.value >= requiredDownPaymentEth, "Zbyt malo ETH na zaliczke USD");
 
             auc.isClosed = true;
             auc.buyer = msg.sender;
-            auc.debt = currentPrice - msg.value;
+            // Zapisujemy dług w USD (Odejmujemy od pełnej ceny USD to, co dostaliśmy w ETH przeliczone na USD)
+            auc.debtUsd = currentPriceUsd - getUsdValue(msg.value); 
             auc.deadline5050 = block.timestamp + 7 days;
 
             (bool success, ) = auc.seller.call{value: msg.value}("");
-            require(success, "Transfer nie powiodl sie");
+            require(success, "Transfer ETH fail");
         }
 
         emit AuctionFinalized(_id, msg.sender, msg.value);
     }
 
-    /// @notice Spłata reszty długu (tryb 50/50, aukcja holenderska)
     function payRemainingDebt(uint256 _id) external payable nonReentrant {
         Auction storage auc = auctions[_id];
         if (msg.sender != auc.buyer) revert NotBuyer();
         require(block.timestamp <= auc.deadline5050, "Czas na splate minal");
-        require(msg.value >= auc.debt, "Za malo ETH na splate dlugu");
+        
+        // Wyliczamy, ile ETH trzeba dziś zapłacić za ten dług w USD
+        uint256 requiredEth = getEthAmountForUsd(auc.debtUsd);
+        require(msg.value >= requiredEth, "Zbyt malo ETH by pokryc reszte dlugu w USD");
 
-        auc.debt = 0;
+        auc.debtUsd = 0;
 
         (bool success, ) = auc.seller.call{value: msg.value}("");
-        require(success, "Transfer nie powiodl sie");
+        require(success, "Transfer fail");
     }
 
-    /// @notice Likwidacja dłużnika po upływie terminu 50/50
     function liquidate(uint256 _id) external nonReentrant {
         Auction storage auc = auctions[_id];
         if (msg.sender != auc.seller) revert NotSeller();
         require(auc.buyer != address(0), "To nie jest transakcja 50/50");
-        require(block.timestamp > auc.deadline5050, "Czas na splate jeszcze nie minal");
-        require(auc.debt > 0, "Dlug jest juz splacony");
+        require(block.timestamp > auc.deadline5050, "Czas na splate minal");
+        require(auc.debtUsd > 0, "Dlug w USD zostal splacony");
 
-        auc.debt = 0;
+        auc.debtUsd = 0;
         auc.buyer = address(0);
     }
 
@@ -203,31 +241,31 @@ contract AuctionManager is ReentrancyGuard {
     //  AUKCJA ANGIELSKA
     // =========================================================
 
-    /// @notice Złożenie oferty w aukcji angielskiej
-    /// Poprzedni lider od razu dostaje swoje ETH z powrotem do odebrania.
     function placeBid(uint256 _id) external payable nonReentrant {
         Auction storage auc = auctions[_id];
         if (auc.auctionType != AuctionType.English) revert WrongAuctionType();
         if (auc.isClosed) revert AuctionClosed();
         if (block.timestamp > auc.expiresAt) revert TimeExpired();
-        require(msg.sender != auc.seller, "Sprzedawca nie moze licytowac");
+        require(msg.sender != auc.seller, "Sprzedawca nie licytuje");
 
-        // Pierwsza oferta musi przekroczyć minBid; kolejne muszą bić dotychczasowe highestBid
-        uint256 minRequired = auc.highestBid == 0 ? auc.minBid : auc.highestBid + 1;
-        require(msg.value >= minRequired, "Oferta musi byc wyzsza niz aktualna");
+        // Przeliczamy ile USD warte jest wpłacone ETH
+        uint256 sentUsdValue = getUsdValue(msg.value);
+        uint256 minUsdRequired = auc.highestBid == 0 ? auc.minBid : auc.highestBid;
+        
+        require(sentUsdValue > minUsdRequired, "Oferta w USD zbyt niska!");
 
-        // Zwracamy ETH poprzedniemu liderowi (pull pattern)
+        // Zwracamy ETH (pull pattern) poprzedniemu liderowi
         if (auc.highestBidder != address(0)) {
-            pendingReturns[_id][auc.highestBidder] += auc.highestBid;
+            pendingReturns[_id][auc.highestBidder] += auc.highestBidEth;
         }
 
-        auc.highestBid = msg.value;
+        auc.highestBid = sentUsdValue;
+        auc.highestBidEth = msg.value; // Zapisujemy twarde ETH do ewentualnego zwrotu
         auc.highestBidder = payable(msg.sender);
 
-        emit BidPlaced(_id, msg.sender, msg.value);
+        emit BidPlaced(_id, msg.sender, sentUsdValue, msg.value);
     }
 
-    /// @notice Wypłata zwróconych środków (dla przebytych licytantów)
     function withdrawReturn(uint256 _id) external nonReentrant {
         uint256 amount = pendingReturns[_id][msg.sender];
         require(amount > 0, "Brak srodkow do wyplaty");
@@ -235,11 +273,9 @@ contract AuctionManager is ReentrancyGuard {
         pendingReturns[_id][msg.sender] = 0;
 
         (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Wyplata nie powiodla sie");
+        require(success, "Wyplata fail");
     }
 
-    /// @notice Finalizacja aukcji angielskiej po upływie czasu
-    /// Może wywołać sprzedawca LUB wygrywający licytant.
     function finalizeEnglishAuction(uint256 _id) external nonReentrant {
         Auction storage auc = auctions[_id];
         if (auc.auctionType != AuctionType.English) revert WrongAuctionType();
@@ -247,26 +283,24 @@ contract AuctionManager is ReentrancyGuard {
         if (block.timestamp <= auc.expiresAt) revert AuctionStillActive();
         require(
             msg.sender == auc.seller || msg.sender == auc.highestBidder,
-            "Tylko sprzedawca lub zwyciezca moze finalizowac"
+            "Tylko sprzedawca lub zwyciezca"
         );
 
         auc.isClosed = true;
         auc.buyer = auc.highestBidder;
 
         if (auc.highestBidder != address(0)) {
-            // Przekazujemy wygraną kwotę sprzedawcy
-            (bool success, ) = auc.seller.call{value: auc.highestBid}("");
-            require(success, "Transfer do sprzedawcy nie powiodl sie");
-            emit AuctionFinalized(_id, auc.highestBidder, auc.highestBid);
+            // Przekazujemy wygraną kwotę ETH (tę którą fizycznie zablokował lider) sprzedawcy
+            (bool success, ) = auc.seller.call{value: auc.highestBidEth}("");
+            require(success, "Transfer do sprzedawcy fail");
+            emit AuctionFinalized(_id, auc.highestBidder, auc.highestBidEth);
         }
-        // Jeśli nikt nie licytował — aukcja zamknięta bez sprzedaży
     }
 
     // =========================================================
     //  WIDOKI POMOCNICZE
     // =========================================================
 
-    /// @notice Zwraca czas pozostały do końca aukcji (w sekundach), 0 jeśli po czasie
     function getTimeLeft(uint256 _id) external view returns (uint256) {
         Auction storage auc = auctions[_id];
         if (block.timestamp >= auc.expiresAt) return 0;

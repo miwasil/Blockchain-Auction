@@ -21,7 +21,7 @@ Przed uruchomieniem projektu lokalnie upewnij się, że masz zainstalowane:
 Otwórz terminal w głównym folderze projektu i uruchom:
 
 ```bash
-anvil --block-time 1
+anvil --block-time 1 --fork-url https://eth-mainnet.g.alchemy.com/v2/<alchemy-api-key> --chain-id 31337
 ```
 
 Nie zamykaj tego terminala — działa on jako lokalny serwer blockchain.
@@ -94,20 +94,22 @@ Uzupełnij pola:
 | Chain ID           | `31337`                 |
 | Symbol waluty      | `ETH`                   |
 
-### Import kont testowych
+### Przygotowanie kont testowych (⚠️ BARDZO WAŻNE)
 
-1. Kliknij ikonę profilu.
-2. Wybierz **Importuj konto**.
-3. Skopiuj **Private Key** wygenerowany przez Anvil.
-4. Wklej klucz w odpowiednie pole.
+Ze względu na specyficzny błąd symulatora Anvil w trybie Fork (tzw. *Genesis State Override Bug*), bezpośrednie testowanie transakcji na domyślnych kontach wygenerowanych przez Anvil powoduje wizualne błędy z aktualizacją salda w portfelu. Aby testy przebiegały bezbłędnie, należy użyć nowo utworzonych kont w Metamask:
 
-Rekomendowane jest zaimportowanie **minimum dwóch kont**, np.:
+1. **Zaimportuj jedno konto z Anvila:**
+   * Kliknij ikonę profilu w MetaMask.
+   * Wybierz **Importuj konto** i wklej **Private Key** pierwszego konta z logów w terminalu Anvil (konto to będzie miało na start 10 000 ETH).
+2. **Utwórz dwa nowe konta w MetaMasku:**
+   * Kliknij ikonę profilu.
+   * Wybierz opcję **Dodaj konto / Utwórz nowe konto**.
+   * Wykonaj ten krok dwukrotnie, tworząc np. *Konto Sprzedawcy* i *Konto Kupującego*.
+3. **Przelej środki na testy:**
+   * Przełącz się na zaimportowane z Anvila konto.
+   * Wyślij standardowym przelewem w MetaMasku np. po **4000 ETH** na nowo utworzone konta Sprzedawcy i Kupującego.
 
-* Konto Sprzedawcy
-* Konto Kupującego
-
-Pozwoli to zasymulować rzeczywiste transakcje między użytkownikami.
-
+> **Uwaga:** Do dalszego testowania aplikacji używaj wyłącznie nowo utworzonych kont. Pozwoli to na bezproblemowe i poprawne symulowanie operacji na blockchainie.
 ---
 
 ## Krok 5: Uruchomienie serwera dla frontendu

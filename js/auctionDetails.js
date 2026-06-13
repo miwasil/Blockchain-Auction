@@ -1,10 +1,3 @@
-// ============================================================
-//  KONFIGURACJA ZEWNĘTRZNA (ALCHEMY & CHAINLINK)
-// ============================================================
-const ALCHEMY_URL = "https://eth-mainnet.g.alchemy.com/v2/wtJBAQ8bkOmO5s8EDWdvH";
-const CHAINLINK_ETH_USD_ADDRESS = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
-const CHAINLINK_ABI = ["function latestRoundData() view returns (uint80, int256 answer, uint256, uint256, uint80)"];
-
 const urlParams = new URLSearchParams(window.location.search);
 const auctionId = urlParams.get("id");
 
@@ -13,7 +6,7 @@ if (!auctionId) {
 }
 
 // ============================================================
-//  GŁÓWNA FUNKCJA ODŚWIEŻANIA STANU
+//  ODŚWIEŻANIE STANU
 // ============================================================
 
 async function fetchBlockchainState() {
@@ -27,26 +20,14 @@ async function fetchBlockchainState() {
         document.getElementById("title").innerText = `${auc.title} (Aukcja #${auctionId})`;
         document.getElementById("desc").innerText = `Sprzedawca: ${auc.seller.substring(0, 6)}...`;
 
-        // Pobieramy kurs USD z prawdziwego Ethereum (Alchemy / Chainlink)
-        let ethUsdPrice = 0;
-        try {
-            const mainnetProvider = new ethers.providers.JsonRpcProvider(ALCHEMY_URL);
-            const priceFeed = new ethers.Contract(CHAINLINK_ETH_USD_ADDRESS, CHAINLINK_ABI, mainnetProvider);
-            const roundData = await priceFeed.latestRoundData();
-            ethUsdPrice = roundData.answer.toNumber() / 1e8; 
-        } catch (chainlinkErr) {
-            console.error("Nie udało się pobrać kursu z Alchemy:", chainlinkErr);
-        }
-
-        // Renderujemy odpowiednie UI i przekazujemy kurs USD
         if (isEnglish) {
             document.getElementById("dutch-ui").style.display = "none";
             document.getElementById("english-ui").style.display = "block";
-            await renderEnglishUI(auc, ethUsdPrice);
+            await renderEnglishUI(auc);
         } else {
             document.getElementById("dutch-ui").style.display = "block";
             document.getElementById("english-ui").style.display = "none";
-            await renderDutchUI(auc, ethUsdPrice);
+            await renderDutchUI(auc);
         }
     } catch (error) {
         console.error("Błąd pobierania stanu z blockchaina:", error);
@@ -57,35 +38,30 @@ async function fetchBlockchainState() {
 //  AUKCJA HOLENDERSKA
 // ============================================================
 
-async function renderDutchUI(auc, ethUsdPrice) {
+async function renderDutchUI(auc) {
     const userAddress = await signer.getAddress();
     const isClosed = auc.isClosed;
     const sellerAddress = auc.seller;
     const buyerAddress = auc.buyer;
-    const debtWei = auc.debt;
+    const debtUsdWei = auc.debtUsd;
 
     const btn100 = document.getElementById("bcBuyBtn");
     const btn50 = document.getElementById("bcBuy50Btn");
 
-    // Wyliczamy obecną cenę ETH i formatujemy tekst w USD
-    const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
-    const ethValue = ethers.utils.formatEther(currentPriceWei);
-    const ethValueDisplay = parseFloat(ethValue).toFixed(4); // Ograniczamy do 4 miejsc
+    // Pobieramy cenę WYŁĄCZNIE W USD
+    const currentPriceUsdWei = await auctionContract.getCurrentPriceUsd(auctionId);
+    const usdValueDisplay = parseFloat(ethers.utils.formatEther(currentPriceUsdWei)).toFixed(2);
     
-    let priceText = `Obecna cena: ${ethValueDisplay} ETH`;
-    if (ethUsdPrice > 0) {
-        const usdValue = (parseFloat(ethValue) * ethUsdPrice).toFixed(2);
-        priceText += ` (~ ${usdValue} USD)`;
-    }
+    let priceText = `Obecna cena: ${usdValueDisplay} USD`;
 
     if (isClosed) {
         document.getElementById("bc-price").innerText = "AUKCJA ZAKOŃCZONA (Przedmiot sprzedany)";
         btn100.style.display = "none";
         btn50.style.display = "none";
 
-        if (userAddress.toLowerCase() === buyerAddress.toLowerCase() && debtWei.gt(0)) {
+        if (userAddress.toLowerCase() === buyerAddress.toLowerCase() && debtUsdWei.gt(0)) {
             document.getElementById("bc-price").innerText +=
-                `\nMasz dług do spłaty: ${ethers.utils.formatEther(debtWei)} ETH`;
+                `\nMasz dług do spłaty: ${parseFloat(ethers.utils.formatEther(debtUsdWei)).toFixed(2)} USD`;
             btn50.style.display = "inline-block";
             btn50.innerText = "Spłać resztę długu";
             btn50.style.backgroundColor = "#dc3545";
@@ -107,18 +83,26 @@ async function renderDutchUI(auc, ethUsdPrice) {
 async function executePurchase(is5050) {
     if (!auctionContract) return alert("Połącz portfel!");
     try {
-        const currentPriceWei = await auctionContract.getCurrentPrice(auctionId);
-        const amountToSend = is5050 ? currentPriceWei.div(2) : currentPriceWei;
+        const currentPriceUsdWei = await auctionContract.getCurrentPriceUsd(auctionId);
+        const requiredEthWei = await auctionContract.getEthAmountForUsd(currentPriceUsdWei);
+        
+        const amountToSendEthWei = is5050 ? requiredEthWei.div(2) : requiredEthWei;
+        const amountWithBuffer = amountToSendEthWei.mul(103).div(100);
 
-        alert("Zaraz otworzy się okno MetaMask. Potwierdź w nim transakcję.");
-        const tx = await auctionContract.buy(auctionId, is5050, { value: amountToSend });
+        alert(`Transakcja przygotowana! Otwieram MetaMask.\nWysłane zostanie ${ethers.utils.formatEther(amountWithBuffer).substring(0,6)} ETH (z wliczonym 3% buforem).`);
+        
+        const tx = await auctionContract.buy(auctionId, is5050, { 
+            value: amountWithBuffer,
+            gasLimit: 500000 
+        });
+        
         console.log("Transakcja zaakceptowana. Oczekuję na blok...");
         await tx.wait();
         alert("Sukces! Transakcja została sfinalizowana.");
         fetchBlockchainState();
     } catch (error) {
-        console.error("Błąd transakcji:", error);
-        alert("Transakcja została odrzucona lub wystąpił błąd.");
+        console.error("Pełny błąd transakcji:", error);
+        alert("Odrzucono transakcję. Sprawdź konsolę (F12) po więcej szczegółów.");
     }
 }
 
@@ -126,15 +110,23 @@ async function payDebt() {
     if (!auctionContract) return alert("Połącz portfel!");
     try {
         const auc = await auctionContract.auctions(auctionId);
-        alert("Zaraz otworzy się okno MetaMask. Potwierdź w nim transakcję spłaty.");
-        const tx = await auctionContract.payRemainingDebt(auctionId, { value: auc.debt });
+        const requiredEthWei = await auctionContract.getEthAmountForUsd(auc.debtUsd);
+        const amountWithBuffer = requiredEthWei.mul(103).div(100);
+
+        alert(`Otwieram MetaMask. Koszt spłaty to ok. ${ethers.utils.formatEther(amountWithBuffer).substring(0,6)} ETH.`);
+        
+        const tx = await auctionContract.payRemainingDebt(auctionId, { 
+            value: amountWithBuffer,
+            gasLimit: 500000 
+        });
+        
         console.log("Transakcja spłaty zaakceptowana. Oczekuję na blok...");
         await tx.wait();
         alert("Sukces! Dług został spłacony.");
         fetchBlockchainState();
     } catch (error) {
         console.error("Błąd spłaty:", error);
-        alert("Transakcja spłaty została odrzucona lub wystąpił błąd.");
+        alert("Transakcja spłaty została odrzucona.");
     }
 }
 
@@ -142,14 +134,14 @@ async function payDebt() {
 //  AUKCJA ANGIELSKA
 // ============================================================
 
-async function renderEnglishUI(auc, ethUsdPrice) {
+async function renderEnglishUI(auc) {
     const userAddress = (await signer.getAddress()).toLowerCase();
     const sellerAddress = auc.seller.toLowerCase();
     const isClosed = auc.isClosed;
 
-    const highestBid = auc.highestBid;
+    const highestBidUsd = auc.highestBid; // Wartość w USD!
     const highestBidder = auc.highestBidder.toLowerCase();
-    const minBid = auc.minBid;
+    const minBidUsd = auc.minBid; // Wartość w USD!
     const timeLeft = await auctionContract.getTimeLeft(auctionId);
 
     const bidInfo = document.getElementById("highest-bid-info");
@@ -158,39 +150,25 @@ async function renderEnglishUI(auc, ethUsdPrice) {
     const endBtn = document.getElementById("endAuctionBtn");
     const withdrawBtn = document.getElementById("withdrawBtn");
 
-    // Odliczanie czasu
+    bidInput.placeholder = "Twoja oferta (USD)";
+
     const minutes = Math.floor(timeLeft.toNumber() / 60);
     const seconds = timeLeft.toNumber() % 60;
     const timeStr = timeLeft.toNumber() > 0
         ? `Czas do końca: ${minutes}m ${seconds}s`
         : "Czas upłynął";
 
-    // Formatowanie najwyższej oferty z USD
-    const highestBidEth = ethers.utils.formatEther(highestBid);
-    let highestBidText = `${highestBidEth} ETH`;
-    if (ethUsdPrice > 0 && highestBid.gt(0)) {
-        highestBidText += ` (~ ${(parseFloat(highestBidEth) * ethUsdPrice).toFixed(2)} USD)`;
-    }
-
-    // Formatowanie minimalnej oferty z USD
-    const minBidEth = ethers.utils.formatEther(minBid);
-    let minBidText = `${minBidEth} ETH`;
-    if (ethUsdPrice > 0 && highestBid.isZero()) {
-        minBidText += ` (~ ${(parseFloat(minBidEth) * ethUsdPrice).toFixed(2)} USD)`;
-    }
-
-    if (highestBid.gt(0)) {
+    if (highestBidUsd.gt(0)) {
         bidInfo.innerText =
-            `Najwyższa oferta: ${highestBidText}` +
+            `Najwyższa oferta: ${parseFloat(ethers.utils.formatEther(highestBidUsd)).toFixed(2)} USD` +
             ` | Lider: ${auc.highestBidder.substring(0, 6)}...` +
             `\n${timeStr}`;
     } else {
         bidInfo.innerText =
-            `Brak ofert. Minimalna oferta: ${minBidText}` +
+            `Brak ofert. Minimalna oferta: ${parseFloat(ethers.utils.formatEther(minBidUsd)).toFixed(2)} USD` +
             `\n${timeStr}`;
     }
 
-    // Chowamy wszystko domyślnie, potem odkrywamy co trzeba
     bidInput.style.display = "none";
     bidBtn.style.display = "none";
     endBtn.style.display = "none";
@@ -198,17 +176,15 @@ async function renderEnglishUI(auc, ethUsdPrice) {
 
     if (isClosed) {
         const winnerText = auc.buyer !== ethers.constants.AddressZero
-            ? `Wygrał: ${auc.buyer.substring(0, 6)}... za ${highestBidText}`
+            ? `Wygrał: ${auc.buyer.substring(0, 6)}... za ${parseFloat(ethers.utils.formatEther(highestBidUsd)).toFixed(2)} USD`
             : "Nikt nie licytował — aukcja zakończona bez sprzedaży.";
         bidInfo.innerText = `AUKCJA ZAKOŃCZONA\n${winnerText}`;
 
-        // Jeśli przebity licytant ma środki do odebrania
         await showWithdrawIfNeeded(withdrawBtn);
         return;
     }
 
     if (userAddress === sellerAddress) {
-        // Sprzedawca widzi przycisk "Zakończ" tylko gdy czas minął
         if (timeLeft.toNumber() === 0) {
             endBtn.style.display = "inline-block";
             endBtn.onclick = finalizeAuction;
@@ -218,9 +194,7 @@ async function renderEnglishUI(auc, ethUsdPrice) {
         return;
     }
 
-    // Zwykły użytkownik
     if (timeLeft.toNumber() === 0) {
-        // Czas upłynął — można sfinalizować (jeśli był liderem)
         if (userAddress === highestBidder) {
             endBtn.style.display = "inline-block";
             endBtn.innerText = "Odbierz przedmiot (finalizuj)";
@@ -230,28 +204,27 @@ async function renderEnglishUI(auc, ethUsdPrice) {
         return;
     }
 
-    // Aukcja aktywna — pokaż formularz licytacji
     bidInput.style.display = "inline-block";
     bidBtn.style.display = "inline-block";
     bidBtn.onclick = placeBid;
 
-    // Podpowiedź minimalnej kwoty
-    const minRequired = highestBid.gt(0)
-        ? ethers.utils.formatEther(highestBid.add(ethers.utils.parseEther("0.001")))
-        : ethers.utils.formatEther(minBid);
-    bidInput.placeholder = `Min. oferta: ${minRequired} ETH`;
+    const minRequired = highestBidUsd.gt(0)
+        ? ethers.utils.formatEther(highestBidUsd.add(ethers.utils.parseEther("1"))) // Minimalne przebicie o 1 USD
+        : ethers.utils.formatEther(minBidUsd);
+    
+    bidInput.placeholder = `Min. oferta: ${minRequired} USD`;
 
-    // Pokaż przycisk wypłaty jeśli przebity
     await showWithdrawIfNeeded(withdrawBtn);
 }
 
 async function showWithdrawIfNeeded(withdrawBtn) {
     try {
         const userAddress = await signer.getAddress();
-        const pending = await auctionContract.pendingReturns(auctionId, userAddress);
-        if (pending.gt(0)) {
+
+        const pendingEth = await auctionContract.pendingReturns(auctionId, userAddress);
+        if (pendingEth.gt(0)) {
             withdrawBtn.style.display = "inline-block";
-            withdrawBtn.innerText = `Odbierz ${ethers.utils.formatEther(pending)} ETH`;
+            withdrawBtn.innerText = `Odbierz zwrócone ETH: ${ethers.utils.formatEther(pendingEth).substring(0,6)}`;
             withdrawBtn.onclick = withdrawReturn;
         }
     } catch (e) {
@@ -262,13 +235,21 @@ async function showWithdrawIfNeeded(withdrawBtn) {
 async function placeBid() {
     if (!auctionContract) return alert("Połącz portfel!");
     const bidInput = document.getElementById("bidAmount");
-    const bidEth = bidInput.value;
-    if (!bidEth || parseFloat(bidEth) <= 0) return alert("Podaj kwotę oferty!");
+    const bidUsd = bidInput.value;
+    if (!bidUsd || parseFloat(bidUsd) <= 0) return alert("Podaj kwotę oferty w USD!");
 
     try {
-        const bidWei = ethers.utils.parseEther(bidEth.toString());
-        alert("Zaraz otworzy się okno MetaMask. Potwierdź w nim transakcję.");
-        const tx = await auctionContract.placeBid(auctionId, { value: bidWei });
+        const bidUsdWei = ethers.utils.parseEther(bidUsd.toString());
+        const requiredEthWei = await auctionContract.getEthAmountForUsd(bidUsdWei);
+        const amountWithBuffer = requiredEthWei.mul(103).div(100);
+
+        alert(`Otwieram MetaMask. Wysłane zostanie ok. ${ethers.utils.formatEther(amountWithBuffer).substring(0,6)} ETH.`);
+        
+        const tx = await auctionContract.placeBid(auctionId, { 
+            value: amountWithBuffer,
+            gasLimit: 500000 
+        });
+        
         console.log("Oferta złożona. Oczekuję na blok...");
         await tx.wait();
         alert("Sukces! Twoja oferta została przyjęta.");
@@ -276,7 +257,7 @@ async function placeBid() {
         fetchBlockchainState();
     } catch (error) {
         console.error("Błąd składania oferty:", error);
-        alert("Transakcja odrzucona lub błąd. Sprawdź konsolę.");
+        alert("Transakcja odrzucona. Upewnij się, że przebiłeś lidera.");
     }
 }
 
@@ -298,7 +279,7 @@ async function finalizeAuction() {
 async function withdrawReturn() {
     if (!auctionContract) return alert("Połącz portfel!");
     try {
-        alert("Zaraz otworzy się okno MetaMask. Potwierdź wypłatę środków.");
+        alert("Zaraz otworzy się okno MetaMask. Potwierdź wypłatę zwróconych ETH.");
         const tx = await auctionContract.withdrawReturn(auctionId);
         console.log("Wypłata wysłana. Oczekuję na blok...");
         await tx.wait();
@@ -313,7 +294,6 @@ async function withdrawReturn() {
 // ============================================================
 //  ODŚWIEŻANIE
 // ============================================================
-
 setInterval(() => {
     if (auctionContract) fetchBlockchainState();
 }, 5000);

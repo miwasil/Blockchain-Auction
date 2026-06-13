@@ -37,14 +37,14 @@ async function renderAuctions() {
                 typeLabel = "Aukcja Klasyczna (English)";
                 const highestBid = auc.highestBid;
                 if (highestBid.gt(0)) {
-                    priceHTML = `Najwyższa oferta: ${ethers.utils.formatEther(highestBid)} ETH`;
+                    priceHTML = `Najwyższa oferta: ${ethers.utils.formatEther(highestBid)} USD`;
                 } else {
-                    priceHTML = `Min. oferta: ${ethers.utils.formatEther(auc.minBid)} ETH`;
+                    priceHTML = `Min. oferta: ${ethers.utils.formatEther(auc.minBid)} USD`;
                 }
             } else {
                 typeLabel = "Aukcja Holenderska (Dutch)";
-                const startingPriceEth = ethers.utils.formatEther(auc.startingPrice);
-                priceHTML = `Cena startowa: ${startingPriceEth} ETH`;
+                const startingPriceUsd = ethers.utils.formatEther(auc.startingPrice);
+                priceHTML = `Cena startowa: ${startingPriceUsd} USD`;
             }
 
             list.innerHTML += `

@@ -20,7 +20,6 @@
     <div class="card">
         <form id="form">
             <input id="title" placeholder="Tytuł" required>
-            <textarea id="desc" placeholder="Opis"></textarea>
 
             <label for="type">Typ aukcji:</label>
             <select id="type">
@@ -28,16 +27,16 @@
                 <option value="english">Klasyczna (English) — cena rośnie</option>
             </select>
 
-            <label for="price" id="priceLabel">Cena początkowa (ETH):</label>
+            <label for="price" id="priceLabel">Cena początkowa (USD):</label>
             <input id="price" type="number" step="0.01" min="0"
-                   placeholder="Cena / Minimalna oferta (ETH)" required>
+                   placeholder="Cena / Minimalna oferta (USD)" required>
 
             <small id="priceHint" style="color: #888;">
                 Dutch: cena startowa (minimum = połowa). English: minimalna kwota pierwszej oferty.
             </small>
 
             <select id="currency">
-                <option>ETH</option>
+                <option>USD</option>
             </select>
 
             <input type="file" id="image" accept="image/*">

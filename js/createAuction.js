@@ -7,16 +7,16 @@ document.getElementById("form").addEventListener("submit", async (e) => {
     }
 
     const title = document.getElementById("title").value;
-    const priceEth = document.getElementById("price").value;
+    const priceUsd = document.getElementById("price").value;
     const auctionType = document.getElementById("type").value; // "dutch" lub "english"
 
-    if (priceEth <= 0) {
+    if (priceUsd <= 0) {
         alert("Cena musi być większa od 0");
         return;
     }
 
     try {
-        const priceWei = ethers.utils.parseEther(priceEth.toString());
+        const priceWei = ethers.utils.parseEther(priceUsd.toString());
         // Czas trwania = 1 dzień
         const durationSeconds = 86400;
 
