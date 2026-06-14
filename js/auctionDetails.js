@@ -227,15 +227,18 @@ async function renderEnglishUI(auc) {
                     ethers.utils.formatEther(highestBidUsd)
                 ).toFixed(2)} USD`;
 
+            endBtn.style.display = "inline-block";
+            endBtn.innerText = "Rozlicz aukcję";
+            endBtn.onclick = finalizeAuction;
+
         } else {
 
             bidInfo.innerText =
                 "Aukcja zakończona bez ofert.";
-        }
 
-        endBtn.style.display = "inline-block";
-        endBtn.innerText = "Rozlicz aukcję";
-        endBtn.onclick = finalizeAuction;
+            // brak przycisku
+            endBtn.style.display = "none";
+        }
 
         await showWithdrawIfNeeded(withdrawBtn);
         return;

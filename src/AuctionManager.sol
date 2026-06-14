@@ -73,7 +73,14 @@ contract AuctionManager is ReentrancyGuard {
         bool highestBidIs5050
     ) {
         Auction storage auc = auctions[_id];
-        bool effectivelyClosed = auc.isClosed || block.timestamp > auc.expiresAt;
+
+        bool effectivelyClosed =
+            auc.isClosed ||
+            (
+                auc.highestBidder == address(0) &&
+                block.timestamp > auc.expiresAt
+            );
+
         return (
             auc.id,
             uint8(auc.auctionType),
@@ -88,7 +95,7 @@ contract AuctionManager is ReentrancyGuard {
             address(auc.highestBidder),
             auc.startAt,
             auc.expiresAt,
-            auc.isClosed,
+            effectivelyClosed,
             address(auc.buyer),
             auc.debtUsd,
             auc.deadline5050,
