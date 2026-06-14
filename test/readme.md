@@ -7,3 +7,8 @@ test 2 — oferta równa najwyższej jest odrzucana (minUsdRequired = highestBid
 test 3 — licytacja 50/50 przyjmuje tylko połowę ETH, zapisuje highestBidIs5050=true, i przy przebijaniu natychmiast zwraca ETH poprzedniemu liderowi
 
 test 4 — getAuction zwraca isClosed=true po skip(61), a placeBid revertuje z TimeExpired
+
+
+## Wyniki testów
+
+![Wyniki testów](testy.png)
