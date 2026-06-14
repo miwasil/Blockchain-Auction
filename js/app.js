@@ -18,7 +18,7 @@ async function renderAuctions() {
         list.innerHTML = "";
 
         for (let i = 1; i <= total; i++) {
-            const auc = await auctionContract.auctions(i);
+            const auc = await auctionContract.getAuction(i);
 
             const id = auc.id.toNumber();
             const title = auc.title;

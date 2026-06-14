@@ -1,5 +1,5 @@
 // ZMIENIĆ PO KAŻDYM RESTARCIE BLOCKCHAINA
-const AUCTION_CONTRACT_ADDRESS = "0x4B06A8b80b64E0B54B3B6dafEDC23C595b7a71E1";
+const AUCTION_CONTRACT_ADDRESS = "0xA2611330bB9cB90104B46faeA854d384C25a4c13";
 
 const AUCTION_ABI = [
     // Tworzenie
@@ -8,7 +8,7 @@ const AUCTION_ABI = [
 
     // Odczyt
     "function auctionCounter() public view returns (uint256)",
-    "function auctions(uint256) public view returns (uint256 id, uint8 auctionType, address seller, string title, uint256 startingPrice, uint256 reservePrice, uint256 discountRate, uint256 minBid, uint256 highestBid, uint256 highestBidEth, address highestBidder, uint256 startAt, uint256 expiresAt, bool isClosed, address buyer, uint256 debtUsd, uint256 deadline5050)",
+    "function getAuction(uint256) external view returns (uint256 id, uint8 auctionType, address seller, string title, uint256 startingPrice, uint256 reservePrice, uint256 discountRate, uint256 minBid, uint256 highestBid, uint256 highestBidEth, address highestBidder, uint256 startAt, uint256 expiresAt, bool isClosed, address buyer, uint256 debtUsd, uint256 deadline5050, bool highestBidIs5050)",
     "function getCurrentPriceUsd(uint256 _id) public view returns (uint256)",
     "function getTimeLeft(uint256 _id) external view returns (uint256)",
     "function pendingReturns(uint256, address) public view returns (uint256)",
@@ -23,7 +23,7 @@ const AUCTION_ABI = [
     "function liquidate(uint256 _id) external",
 
     // Aukcja angielska
-    "function placeBid(uint256 _id) external payable",
+    "function placeBid(uint256 _id, bool is5050) external payable",
     "function withdrawReturn(uint256 _id) external",
     "function finalizeEnglishAuction(uint256 _id) external",
 

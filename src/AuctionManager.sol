@@ -30,26 +30,58 @@ contract AuctionManager is ReentrancyGuard {
         string title;
 
         // --- Pola Holenderskiej (CENY W USD WEI) ---
-        uint256 startingPrice; 
-        uint256 reservePrice;  
-        uint256 discountRate;  
+        uint256 startingPrice;
+        uint256 reservePrice;
+        uint256 discountRate;
 
         // --- Pola Angielskiej (CENY W USD WEI) ---
-        uint256 minBid;         
+        uint256 minBid;
         uint256 highestBid;     // najwyzsza
         uint256 highestBidEth;  // ile ETH wplacil lider
-        address payable highestBidder; 
+        address payable highestBidder;
 
         uint256 startAt;
         uint256 expiresAt;
         bool isClosed;
-        address buyer;      
-        uint256 debtUsd;  
+        address buyer;
+        uint256 debtUsd;
         uint256 deadline5050;
+        bool highestBidIs5050;
     }
 
-    mapping(uint256 => Auction) public auctions;
+    mapping(uint256 => Auction) internal auctions;
     mapping(uint256 => mapping(address => uint256)) public pendingReturns; // Zawsze w ETH
+
+    function getAuction(uint256 _id) external view returns (
+        uint256 id,
+        uint8 auctionType,
+        address seller,
+        string memory title,
+        uint256 startingPrice,
+        uint256 reservePrice,
+        uint256 discountRate,
+        uint256 minBid,
+        uint256 highestBid,
+        uint256 highestBidEth,
+        address highestBidder,
+        uint256 startAt,
+        uint256 expiresAt,
+        bool isClosed,
+        address buyer,
+        uint256 debtUsd,
+        uint256 deadline5050,
+        bool highestBidIs5050
+    ) {
+        Auction storage auc = auctions[_id];
+        bool effectivelyClosed = auc.isClosed || block.timestamp > auc.expiresAt;
+        return (
+            auc.id, uint8(auc.auctionType), auc.seller, auc.title,
+            auc.startingPrice, auc.reservePrice, auc.discountRate,
+            auc.minBid, auc.highestBid, auc.highestBidEth, auc.highestBidder,
+            auc.startAt, auc.expiresAt, effectivelyClosed,
+            auc.buyer, auc.debtUsd, auc.deadline5050, auc.highestBidIs5050
+        );
+    }
 
     uint256 public auctionCounter;
 
@@ -103,25 +135,16 @@ contract AuctionManager is ReentrancyGuard {
         auctionCounter++;
         uint256 newId = auctionCounter;
 
-        auctions[newId] = Auction({
-            id: newId,
-            auctionType: AuctionType.Dutch,
-            seller: payable(msg.sender),
-            title: _title,
-            startingPrice: _startingPriceUsd,
-            reservePrice: _reservePriceUsd,
-            discountRate: (_startingPriceUsd - _reservePriceUsd) / _duration,
-            minBid: 0,
-            highestBid: 0,
-            highestBidEth: 0,
-            highestBidder: payable(address(0)),
-            startAt: block.timestamp,
-            expiresAt: block.timestamp + _duration,
-            isClosed: false,
-            buyer: address(0),
-            debtUsd: 0,
-            deadline5050: 0
-        });
+        Auction storage auc = auctions[newId];
+        auc.id = newId;
+        auc.auctionType = AuctionType.Dutch;
+        auc.seller = payable(msg.sender);
+        auc.title = _title;
+        auc.startingPrice = _startingPriceUsd;
+        auc.reservePrice = _reservePriceUsd;
+        auc.discountRate = (_startingPriceUsd - _reservePriceUsd) / _duration;
+        auc.startAt = block.timestamp;
+        auc.expiresAt = block.timestamp + _duration;
 
         emit AuctionCreated(newId, AuctionType.Dutch, msg.sender);
     }
@@ -137,25 +160,14 @@ contract AuctionManager is ReentrancyGuard {
         auctionCounter++;
         uint256 newId = auctionCounter;
 
-        auctions[newId] = Auction({
-            id: newId,
-            auctionType: AuctionType.English,
-            seller: payable(msg.sender),
-            title: _title,
-            startingPrice: 0,
-            reservePrice: 0,
-            discountRate: 0,
-            minBid: _minBidUsd,
-            highestBid: 0,
-            highestBidEth: 0,
-            highestBidder: payable(address(0)),
-            startAt: block.timestamp,
-            expiresAt: block.timestamp + _duration,
-            isClosed: false,
-            buyer: address(0),
-            debtUsd: 0,
-            deadline5050: 0
-        });
+        Auction storage auc = auctions[newId];
+        auc.id = newId;
+        auc.auctionType = AuctionType.English;
+        auc.seller = payable(msg.sender);
+        auc.title = _title;
+        auc.minBid = _minBidUsd;
+        auc.startAt = block.timestamp;
+        auc.expiresAt = block.timestamp + _duration;
 
         emit AuctionCreated(newId, AuctionType.English, msg.sender);
     }
@@ -201,7 +213,7 @@ contract AuctionManager is ReentrancyGuard {
             auc.isClosed = true;
             auc.buyer = msg.sender;
             // Zapisujemy dług w USD (Odejmujemy od pełnej ceny USD to, co dostaliśmy w ETH przeliczone na USD)
-            auc.debtUsd = currentPriceUsd - getUsdValue(msg.value); 
+            auc.debtUsd = currentPriceUsd - getUsdValue(msg.value);
             auc.deadline5050 = block.timestamp + 7 days;
 
             (bool success, ) = auc.seller.call{value: msg.value}("");
@@ -215,14 +227,21 @@ contract AuctionManager is ReentrancyGuard {
         Auction storage auc = auctions[_id];
         if (msg.sender != auc.buyer) revert NotBuyer();
         require(block.timestamp <= auc.deadline5050, "Czas na splate minal");
-        
-        // Wyliczamy, ile ETH trzeba dziś zapłacić za ten dług w USD
+
         uint256 requiredEth = getEthAmountForUsd(auc.debtUsd);
-        require(msg.value >= requiredEth, "Zbyt malo ETH by pokryc reszte dlugu w USD");
+        uint256 fromEscrow = 0;
+
+        if (auc.auctionType == AuctionType.English && auc.highestBidEth > 0) {
+            fromEscrow = auc.highestBidEth >= requiredEth ? requiredEth : auc.highestBidEth;
+            auc.highestBidEth -= fromEscrow;
+        }
+
+        uint256 fromMsg = requiredEth - fromEscrow;
+        require(msg.value >= fromMsg, "Zbyt malo ETH by pokryc reszte dlugu w USD");
 
         auc.debtUsd = 0;
 
-        (bool success, ) = auc.seller.call{value: msg.value}("");
+        (bool success, ) = auc.seller.call{value: fromEscrow + fromMsg}("");
         require(success, "Transfer fail");
     }
 
@@ -233,6 +252,12 @@ contract AuctionManager is ReentrancyGuard {
         require(block.timestamp > auc.deadline5050, "Czas na splate minal");
         require(auc.debtUsd > 0, "Dlug w USD zostal splacony");
 
+        if (auc.auctionType == AuctionType.English && auc.highestBidEth > 0) {
+            (bool success, ) = auc.seller.call{value: auc.highestBidEth}("");
+            require(success, "Transfer escrow fail");
+            auc.highestBidEth = 0;
+        }
+
         auc.debtUsd = 0;
         auc.buyer = address(0);
     }
@@ -241,41 +266,62 @@ contract AuctionManager is ReentrancyGuard {
     //  AUKCJA ANGIELSKA
     // =========================================================
 
-    function placeBid(uint256 _id) external payable nonReentrant {
+    // Licytujący deklaruje tryb płatności przy składaniu oferty:
+    // is5050=false -> wpłaca 100% oferty do escrow
+    // is5050=true  -> wpłaca 50% oferty do escrow; resztę płaci po wygraniu (7 dni)
+    // Lider NIE może podbijać własnej oferty — musi poczekać aż ktoś go przebije.
+    // Gdy lider jest przebijany, jego ETH jest mu natychmiast zwracane (bez pendingReturns).
+
+    function placeBid(uint256 _id, bool is5050) external payable nonReentrant {
         Auction storage auc = auctions[_id];
         if (auc.auctionType != AuctionType.English) revert WrongAuctionType();
         if (auc.isClosed) revert AuctionClosed();
         if (block.timestamp > auc.expiresAt) revert TimeExpired();
         require(msg.sender != auc.seller, "Sprzedawca nie licytuje");
+        require(msg.sender != auc.highestBidder, "Jestes liderem - czekaj az ktos Cie przebije");
 
-        // Przeliczamy ile USD warte jest wpłacone ETH
-        uint256 sentUsdValue = getUsdValue(msg.value);
-        uint256 minUsdRequired = auc.highestBid == 0 ? auc.minBid : auc.highestBid;
-        
-        require(sentUsdValue > minUsdRequired, "Oferta w USD zbyt niska!");
+        // Minimalna oferta = obecna najwyzsza + 1 USD, przeliczona na ETH.
+        // Porownujemy ETH do ETH zeby uniknac bledow zaokraglenia przy konwersji USD<->ETH.
+        // Przy 50/50 msg.value to polowa pelnej kwoty, wiec rowniez minEth dzielimy przez 2.
+        uint256 minUsdRequired = auc.highestBid == 0 ? auc.minBid : auc.highestBid + 1 ether;
+        uint256 minEthRequired = getEthAmountForUsd(minUsdRequired);
+        uint256 effectiveEth   = is5050 ? msg.value * 2 : msg.value;
 
-        // Zwracamy ETH (pull pattern) poprzedniemu liderowi
+        require(effectiveEth >= minEthRequired, "Oferta w USD zbyt niska!");
+
+        // Zapisujemy wartosc oferty w USD na podstawie pelnej kwoty ETH
+        uint256 sentUsdValue = is5050 ? getUsdValue(msg.value) * 2 : getUsdValue(msg.value);
+
+        // Zwrot poprzedniemu liderowi — natychmiastowy transfer (bez pendingReturns)
         if (auc.highestBidder != address(0)) {
-            pendingReturns[_id][auc.highestBidder] += auc.highestBidEth;
+            address payable prevBidder = auc.highestBidder;
+            uint256 refundAmount = auc.highestBidEth;
+            auc.highestBidEth = 0;
+            auc.highestBidder = payable(address(0));
+            (bool refunded, ) = prevBidder.call{value: refundAmount}("");
+            require(refunded, "Zwrot poprzedniemu liderowi fail");
         }
 
         auc.highestBid = sentUsdValue;
-        auc.highestBidEth = msg.value; // Zapisujemy twarde ETH do ewentualnego zwrotu
+        auc.highestBidEth = msg.value;
         auc.highestBidder = payable(msg.sender);
+        auc.highestBidIs5050 = is5050;
 
         emit BidPlaced(_id, msg.sender, sentUsdValue, msg.value);
     }
 
+    // Pozostawione dla kompatybilnosci — po zmianie logiki pendingReturns nie sa uzywane
+    // przy licytacji, ale moga byc niezerowe z poprzednich wersji kontraktu
     function withdrawReturn(uint256 _id) external nonReentrant {
         uint256 amount = pendingReturns[_id][msg.sender];
         require(amount > 0, "Brak srodkow do wyplaty");
-
         pendingReturns[_id][msg.sender] = 0;
-
         (bool success, ) = payable(msg.sender).call{value: amount}("");
         require(success, "Wyplata fail");
     }
 
+    // Finalizacja: tryb 50/50 jest juz ustalony z momentu licytacji (highestBidIs5050).
+    // Sprzedawca lub zwyciezca moze wywolac finalizacje — tryb sie nie zmienia.
     function finalizeEnglishAuction(uint256 _id) external nonReentrant {
         Auction storage auc = auctions[_id];
         if (auc.auctionType != AuctionType.English) revert WrongAuctionType();
@@ -289,11 +335,29 @@ contract AuctionManager is ReentrancyGuard {
         auc.isClosed = true;
         auc.buyer = auc.highestBidder;
 
-        if (auc.highestBidder != address(0)) {
-            // Przekazujemy wygraną kwotę ETH (tę którą fizycznie zablokował lider) sprzedawcy
-            (bool success, ) = auc.seller.call{value: auc.highestBidEth}("");
+        if (auc.highestBidder == address(0)) {
+            // Nikt nie licytowal — aukcja zamknieta bez transakcji
+            return;
+        }
+
+        uint256 escrowEth = auc.highestBidEth;
+        auc.highestBidEth = 0;
+
+        if (!auc.highestBidIs5050) {
+            // Tryb 100%: cala kwota escrow idzie do sprzedawcy
+            (bool success, ) = auc.seller.call{value: escrowEth}("");
             require(success, "Transfer do sprzedawcy fail");
-            emit AuctionFinalized(_id, auc.highestBidder, auc.highestBidEth);
+            emit AuctionFinalized(_id, auc.buyer, escrowEth);
+        } else {
+            // Tryb 50/50: escrow to juz 50% — idzie do sprzedawcy; pozostale 50% to dług
+            uint256 fullUsd = auc.highestBid;
+            uint256 paidUsd = getUsdValue(escrowEth);
+            auc.debtUsd = fullUsd - paidUsd;
+            auc.deadline5050 = block.timestamp + 7 days;
+
+            (bool success, ) = auc.seller.call{value: escrowEth}("");
+            require(success, "Transfer do sprzedawcy fail");
+            emit AuctionFinalized(_id, auc.buyer, escrowEth);
         }
     }
 
