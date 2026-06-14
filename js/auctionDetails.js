@@ -189,8 +189,8 @@ async function renderEnglishUI(auc) {
     withdrawBtn.style.display = "none";
 
     if (isClosed) {
-        const winnerText = auc.buyer !== ethers.constants.AddressZero
-            ? `Wygrał: ${auc.buyer.substring(0, 6)}... za ${parseFloat(ethers.utils.formatEther(highestBidUsd)).toFixed(2)} USD`
+        const winnerText = auc.highestBidder !== ethers.constants.AddressZero
+            ? `Wygrał: ${auc.highestBidder.substring(0, 6)}... za ${parseFloat(ethers.utils.formatEther(highestBidUsd)).toFixed(2)} USD`
             : "Nikt nie licytował — aukcja zakończona bez sprzedaży.";
         bidInfo.innerText = `AUKCJA ZAKOŃCZONA\n${winnerText}`;
 
@@ -217,27 +217,26 @@ async function renderEnglishUI(auc) {
     }
 
     if (timeLeft.toNumber() === 0) {
-        if (userAddress === highestBidder) {
-            const modeLabel = auc.highestBidIs5050
-                ? `na raty — wpłaciłeś już 50%, pozostałe ${parseFloat(ethers.utils.formatEther(auc.highestBid) / 2).toFixed(2)} USD płatne w 7 dni`
-                : "w całości — środki zostaną przekazane sprzedawcy";
-            bidInfo.innerText += `\n\n🏆 Wygrałeś! Tryb płatności: ${modeLabel}.`;
-            endBtn.style.display = "inline-block";
-            endBtn.innerText = "Odbierz przedmiot i sfinalizuj";
-            endBtn.onclick = finalizeAuction;
-        } else if (userAddress === sellerAddress) {
-            if (highestBidUsd.gt(0)) {
-                bidInfo.innerText += `\n\nCzas aukcji upłynął. Możesz zakończyć aukcję lub poczekać aż zwycięzca to zrobi.`;
-                endBtn.style.display = "inline-block";
-                endBtn.innerText = "Zakończ aukcję";
-                endBtn.onclick = finalizeAuction;
-            } else {
-                bidInfo.innerText += `\n\nNikt nie złożył oferty.`;
-                endBtn.style.display = "inline-block";
-                endBtn.innerText = "Zamknij aukcję";
-                endBtn.onclick = finalizeAuction;
-            }
+
+        if (highestBidUsd.gt(0)) {
+
+            bidInfo.innerText =
+                `🏆 Aukcja zakończona\n` +
+                `Lider: ${auc.highestBidder.substring(0,6)}...\n` +
+                `Oferta: ${parseFloat(
+                    ethers.utils.formatEther(highestBidUsd)
+                ).toFixed(2)} USD`;
+
+        } else {
+
+            bidInfo.innerText =
+                "Aukcja zakończona bez ofert.";
         }
+
+        endBtn.style.display = "inline-block";
+        endBtn.innerText = "Rozlicz aukcję";
+        endBtn.onclick = finalizeAuction;
+
         await showWithdrawIfNeeded(withdrawBtn);
         return;
     }
@@ -347,7 +346,10 @@ async function finalizeAuction() {
     try {
         const auc = await auctionContract.getAuction(auctionId);
         const modeLabel = auc.highestBidIs5050 ? "50/50 (wpłaciłeś połowę, reszta w 7 dni)" : "100%";
-        alert(`Zaraz otworzy się okno MetaMask. Tryb płatności: ${modeLabel}.`);
+        alert(
+            `Rozliczenie aukcji.\n` +
+            `Tryb płatności: ${modeLabel}.`
+        );
         const tx = await auctionContract.finalizeEnglishAuction(auctionId, { gasLimit: 500000 });
         console.log("Finalizacja wysłana. Oczekuję na blok...");
         await tx.wait();

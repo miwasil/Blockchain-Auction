@@ -75,11 +75,24 @@ contract AuctionManager is ReentrancyGuard {
         Auction storage auc = auctions[_id];
         bool effectivelyClosed = auc.isClosed || block.timestamp > auc.expiresAt;
         return (
-            auc.id, uint8(auc.auctionType), auc.seller, auc.title,
-            auc.startingPrice, auc.reservePrice, auc.discountRate,
-            auc.minBid, auc.highestBid, auc.highestBidEth, auc.highestBidder,
-            auc.startAt, auc.expiresAt, effectivelyClosed,
-            auc.buyer, auc.debtUsd, auc.deadline5050, auc.highestBidIs5050
+            auc.id,
+            uint8(auc.auctionType),
+            address(auc.seller),
+            auc.title,
+            auc.startingPrice,
+            auc.reservePrice,
+            auc.discountRate,
+            auc.minBid,
+            auc.highestBid,
+            auc.highestBidEth,
+            address(auc.highestBidder),
+            auc.startAt,
+            auc.expiresAt,
+            auc.isClosed,
+            address(auc.buyer),
+            auc.debtUsd,
+            auc.deadline5050,
+            auc.highestBidIs5050
         );
     }
 
@@ -324,19 +337,20 @@ contract AuctionManager is ReentrancyGuard {
     // Sprzedawca lub zwyciezca moze wywolac finalizacje — tryb sie nie zmienia.
     function finalizeEnglishAuction(uint256 _id) external nonReentrant {
         Auction storage auc = auctions[_id];
-        if (auc.auctionType != AuctionType.English) revert WrongAuctionType();
-        if (auc.isClosed) revert AuctionClosed();
-        if (block.timestamp <= auc.expiresAt) revert AuctionStillActive();
-        require(
-            msg.sender == auc.seller || msg.sender == auc.highestBidder,
-            "Tylko sprzedawca lub zwyciezca"
-        );
+
+        if (auc.auctionType != AuctionType.English)
+            revert WrongAuctionType();
+
+        if (auc.isClosed)
+            revert AuctionClosed();
+
+        if (block.timestamp <= auc.expiresAt)
+            revert AuctionStillActive();
 
         auc.isClosed = true;
         auc.buyer = auc.highestBidder;
 
         if (auc.highestBidder == address(0)) {
-            // Nikt nie licytowal — aukcja zamknieta bez transakcji
             return;
         }
 
@@ -344,20 +358,36 @@ contract AuctionManager is ReentrancyGuard {
         auc.highestBidEth = 0;
 
         if (!auc.highestBidIs5050) {
-            // Tryb 100%: cala kwota escrow idzie do sprzedawcy
-            (bool success, ) = auc.seller.call{value: escrowEth}("");
+
+            (bool success,) =
+                                    auc.seller.call{value: escrowEth}("");
+
             require(success, "Transfer do sprzedawcy fail");
-            emit AuctionFinalized(_id, auc.buyer, escrowEth);
+
+            emit AuctionFinalized(
+                _id,
+                auc.buyer,
+                escrowEth
+            );
+
         } else {
-            // Tryb 50/50: escrow to juz 50% — idzie do sprzedawcy; pozostale 50% to dług
+
             uint256 fullUsd = auc.highestBid;
             uint256 paidUsd = getUsdValue(escrowEth);
+
             auc.debtUsd = fullUsd - paidUsd;
             auc.deadline5050 = block.timestamp + 7 days;
 
-            (bool success, ) = auc.seller.call{value: escrowEth}("");
+            (bool success,) =
+                                    auc.seller.call{value: escrowEth}("");
+
             require(success, "Transfer do sprzedawcy fail");
-            emit AuctionFinalized(_id, auc.buyer, escrowEth);
+
+            emit AuctionFinalized(
+                _id,
+                auc.buyer,
+                escrowEth
+            );
         }
     }
 
